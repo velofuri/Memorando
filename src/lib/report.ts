@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { describeCard } from './cards';
-import { groupKey, summarize } from './summary';
+import { secs, summarize, type SpanAttempt } from './summary';
 import { DIFFICULTY_LABEL, MODE_LABEL, MODE_SHORT, type Patient, type Session } from './types';
 import { DISCLAIMER, download, fmtAge, fmtDate, fmtDateTime } from './util';
 
@@ -80,6 +80,55 @@ function chart(doc: jsPDF, x: number, y: number, w: number, h: number, values: n
   doc.setTextColor(0);
 }
 
+/** Gráfico do modo sequência: tamanho por tentativa, ● verde = acerto, ✕ vermelho = erro, tracejado = span. */
+function spanChart(doc: jsPDF, x: number, y: number, w: number, h: number, attempts: SpanAttempt[], span: number, max: number) {
+  const padL = 10;
+  const padR = 18;
+  const n = attempts.length;
+  const px = (i: number) => x + padL + (n <= 1 ? (w - padL - padR) / 2 : (i * (w - padL - padR)) / (n - 1));
+  const py = (v: number) => y + h - 4 - (v / Math.max(1, max)) * (h - 8);
+  doc.setLineWidth(0.15).setDrawColor(215);
+  doc.setFont('helvetica', 'normal');
+  for (let t = 0; t <= max; t++) {
+    doc.line(x + padL, py(t), x + w - padR, py(t));
+    doc.setFontSize(6.5).setTextColor(120).text(String(t), x + padL - 2, py(t) + 1, { align: 'right' });
+  }
+  if (span > 0) {
+    doc.setDrawColor(59, 91, 219).setLineWidth(0.4).setLineDashPattern([1.2, 1], 0);
+    doc.line(x + padL, py(span), x + w - padR, py(span));
+    doc.setLineDashPattern([], 0);
+    doc.setFontSize(7).setTextColor(59, 91, 219).text(`span ${span}`, x + w - padR + 2, py(span) + 1);
+  }
+  doc.setDrawColor(173, 181, 189).setLineWidth(0.3);
+  for (let i = 1; i < n; i++) doc.line(px(i - 1), py(attempts[i - 1].length), px(i), py(attempts[i].length));
+  attempts.forEach((a, i) => {
+    const cx = px(i);
+    const cy = py(a.length);
+    if (a.correct) {
+      doc.setFillColor(47, 158, 68).circle(cx, cy, 1.3, 'F');
+    } else {
+      doc.setDrawColor(224, 49, 49).setLineWidth(0.6);
+      doc.line(cx - 1.2, cy - 1.2, cx + 1.2, cy + 1.2);
+      doc.line(cx + 1.2, cy - 1.2, cx - 1.2, cy + 1.2);
+    }
+    doc.setFontSize(6.5).setTextColor(120).text(`T${a.n}`, cx, y + h + 2, { align: 'center' });
+  });
+  // Legenda
+  const ly = y + h + 6.5;
+  doc.setFontSize(7).setTextColor(90);
+  doc.setFillColor(47, 158, 68).circle(x + padL + 1, ly - 0.8, 1, 'F');
+  doc.text('acertou', x + padL + 3.5, ly);
+  doc.setDrawColor(224, 49, 49).setLineWidth(0.5);
+  doc.line(x + padL + 19, ly - 1.8, x + padL + 21, ly + 0.2);
+  doc.line(x + padL + 21, ly - 1.8, x + padL + 19, ly + 0.2);
+  doc.text('errou', x + padL + 23, ly);
+  doc.setDrawColor(59, 91, 219).setLineWidth(0.4).setLineDashPattern([1.2, 1], 0);
+  doc.line(x + padL + 36, ly - 0.8, x + padL + 42, ly - 0.8);
+  doc.setLineDashPattern([], 0);
+  doc.text('maior sequência correta (span)', x + padL + 44, ly);
+  doc.setTextColor(0);
+}
+
 export function exportPdf(patient: Patient, sessions: Session[]) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   let y = M;
@@ -135,24 +184,6 @@ export function exportPdf(patient: Patient, sessions: Session[]) {
   }
   y += 4;
 
-  // Evolução por grupo (mesmo modo + perfil, sem treino)
-  const groups = new Map<string, Session[]>();
-  for (const s of sorted.filter((s) => !s.training)) {
-    const k = groupKey(s);
-    groups.set(k, [...(groups.get(k) ?? []), s]);
-  }
-  const evo = [...groups.values()].filter((g) => g.length >= 2);
-  if (evo.length) {
-    text('Evolução entre sessões (mesmo modo e perfil, sem treino)', 12, true);
-    for (const g of evo) {
-      ensure(48);
-      text(`${MODE_LABEL[g[0].mode]} – perfil ${g[0].profile.name}`, 9.5, true);
-      const sm = g.map(summarize);
-      chart(doc, M, y, W * 0.7, 36, sm.map((x) => x.score), g.map((s) => fmtDate(s.startedAt).slice(0, 5)), sm[0].max);
-      y += 44;
-    }
-  }
-
   // Detalhe por sessão
   text('Detalhamento', 12, true);
   for (const s of sorted) {
@@ -164,11 +195,74 @@ export function exportPdf(patient: Patient, sessions: Session[]) {
     text(`${fmtDateTime(s.startedAt)} – ${MODE_LABEL[s.mode]}${s.training ? ' (treino)' : ''}`, 10, true);
     const p = s.profile;
     text(
-      `Perfil ${p.name}: ${p.cardCount} cartões, exibição ${p.exposureMs / 1000}s, intervalo ${p.intervalMs / 1000}s, ` +
-        `dificuldade ${DIFFICULTY_LABEL[p.difficulty]}, ${p.colors ? 'com cores' : 'preto e branco'}, ${p.trials} ensaios.`,
+      s.mode === 'span'
+        ? `Perfil ${p.name}: ${p.cardCount} cartões na grade, dificuldade ${DIFFICULTY_LABEL[p.difficulty]}, ` +
+            `${p.colors ? 'com cores' : 'preto e branco'}. Cada cartão acende por 0,9 s.`
+        : `Perfil ${p.name}: ${p.cardCount} cartões, exibição ${p.exposureMs / 1000}s, intervalo ${p.intervalMs / 1000}s, ` +
+            `dificuldade ${DIFFICULTY_LABEL[p.difficulty]}, ${p.colors ? 'com cores' : 'preto e branco'}, ${p.trials} ensaios.`,
       8.5,
     );
     for (const d of sm.details) text('- ' + d, 9);
+    if (sm.attempts?.length) {
+      ensure(48);
+      y += 1;
+      spanChart(doc, M, y, W * 0.75, 34, sm.attempts, sm.score, sm.max);
+      y += 46;
+      const hasFirst = sm.attempts.some((a) => a.firstTapMs !== undefined);
+      const c = [M, M + 16, M + 30, M + 62, M + 104, M + 146, M + 162];
+      const head = ['Tentativa', 'Tamanho', 'Resultado', 'Sequência mostrada', 'Resposta da criança', hasFirst ? '1º toque' : '', 'Total / por toque'];
+      const line = (cells: string[], bold = false, wrong: number[] = [], a?: SpanAttempt) => {
+        ensure(5);
+        doc.setFont('helvetica', bold ? 'bold' : 'normal').setFontSize(7.5);
+        cells.forEach((cell, i) => {
+          if (i === 2 && a) doc.setTextColor(...((a.correct ? [47, 158, 68] : [201, 42, 42]) as [number, number, number]));
+          if (i === 4 && a) {
+            // resposta com os toques fora de ordem em vermelho
+            let cx = c[4];
+            a.response.forEach((v, j) => {
+              const part = (j > 0 ? ' > ' : '') + v;
+              const isWrong = wrong.includes(j);
+              const sep = j > 0 ? ' > ' : '';
+              doc.setTextColor(0).text(sep, cx, y + 3);
+              cx += doc.getTextWidth(sep);
+              doc.setTextColor(...((isWrong ? [201, 42, 42] : [0, 0, 0]) as [number, number, number]));
+              doc.text(String(v), cx, y + 3);
+              cx += doc.getTextWidth(part) - doc.getTextWidth(sep);
+            });
+            doc.setTextColor(0);
+            return;
+          }
+          doc.text(latin1(cell), c[i], y + 3);
+          doc.setTextColor(0);
+        });
+        y += 4.6;
+      };
+      line(head, true);
+      doc.setDrawColor(200).setLineWidth(0.2).line(M, y - 0.6, M + W, y - 0.6);
+      for (const a of sm.attempts) {
+        const wrong = a.response.flatMap((v, j) => (v === a.sequence[j] ? [] : [j]));
+        line(
+          [
+            `T${a.n}`,
+            String(a.length),
+            a.correct ? 'Acertou' : `Errou no ${a.firstError}º toque`,
+            a.sequence.join(' > '),
+            '',
+            a.firstTapMs !== undefined ? secs(a.firstTapMs) : hasFirst ? '-' : '',
+            `${secs(a.durationMs)} / ${secs(a.perTapMs)}`,
+          ],
+          false,
+          wrong,
+          a,
+        );
+      }
+      y += 1;
+      text(
+        'Números = posição do cartão na grade, da esquerda para a direita e de cima para baixo (1 = canto superior ' +
+          'esquerdo). Em vermelho, os toques fora da ordem. Tempo total = do fim da demonstração até o último toque.',
+        7,
+      );
+    }
     if (sm.curve.length > 1 && s.mode !== 'escolhida') {
       ensure(42);
       const labels = sm.curve.map((_, i) => `E${i + 1}`);

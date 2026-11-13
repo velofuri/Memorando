@@ -64,8 +64,8 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
           </button>
         </div>
         <p className="muted small">
-          Cada sessão guarda uma cópia do perfil usado. A evolução compara sessões com o mesmo nome de perfil — evite
-          renomear ou alterar um perfil já usado; prefira criar outro.
+          Cada sessão guarda uma cópia do perfil usado, então alterar um perfil não muda sessões já feitas. Para
+          comparar sessões entre si, prefira criar um perfil novo a alterar um já usado.
         </p>
         {profiles.map((p) => (
           <ProfileEditor key={p.id} profile={p} canDelete={profiles.length > 1} />

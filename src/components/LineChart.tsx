@@ -6,7 +6,7 @@ interface Props {
   height?: number;
 }
 
-/** Gráfico de linha simples em SVG (curva de aprendizagem / evolução). */
+/** Gráfico de linha simples em SVG (curva de aprendizagem). */
 export function LineChart({ values, labels, max, extraPoint, height = 180 }: Props) {
   const n = values.length + (extraPoint ? 1 : 0);
   const W = Math.max(320, n * 70);

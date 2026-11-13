@@ -66,6 +66,8 @@ export interface SpanTrial {
   response: number[];
   correct: boolean;
   durationMs: number;
+  /** Momento de cada toque, em ms desde o início da resposta (sessões antigas não têm). */
+  tapMs?: number[];
 }
 
 export type Trial = ChosenTrial | SetTrial | DrawTrial | SpanTrial;

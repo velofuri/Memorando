@@ -1,8 +1,9 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useState } from 'react';
 import { LineChart } from '../components/LineChart';
+import { SpanChart, SpanTable } from '../components/SpanReport';
 import { db } from '../lib/db';
-import { groupKey, summarize } from '../lib/summary';
+import { summarize } from '../lib/summary';
 import { DIFFICULTY_LABEL, MODE_HELP, MODE_LABEL, MODE_SHORT, type Mode, type Session } from '../lib/types';
 import { ageMonths, DISCLAIMER, fmtAge, fmtDate, fmtDateTime } from '../lib/util';
 import type { GameConfig } from './GameScreen';
@@ -42,13 +43,6 @@ export function PatientPage({ patientId, onBack, onStart }: Props) {
 
   const profile = profiles.find((p) => p.id === profileId) ?? profiles[0];
   const pending = sessions.filter((s) => s.delayedPending);
-
-  // Grupos para evolução (mesmo modo e perfil, sem treino), em ordem cronológica.
-  const groups = new Map<string, Session[]>();
-  for (const s of [...sessions].reverse().filter((s) => !s.training)) {
-    groups.set(groupKey(s), [...(groups.get(groupKey(s)) ?? []), s]);
-  }
-  const evo = [...groups.values()].filter((g) => g.length >= 2);
 
   const start = (delayedSession?: Session) => {
     enterFullscreen();
@@ -129,27 +123,12 @@ export function PatientPage({ patientId, onBack, onStart }: Props) {
         </div>
         <label className="check">
           <input type="checkbox" checked={training} onChange={(e) => setTraining(e.target.checked)} />
-          Modo treino/estimulação (mostra acertos e erros; não entra na evolução)
+          Modo treino/estimulação (mostra à criança se acertou ou errou)
         </label>
         <button type="button" className="primary big" onClick={() => start()} disabled={!profile}>
           Iniciar e entregar o tablet à criança
         </button>
       </section>
-
-      {evo.length > 0 && (
-        <section className="panel">
-          <h2>Evolução</h2>
-          {evo.map((g) => {
-            const sm = g.map(summarize);
-            return (
-              <div key={groupKey(g[0])} className="chart-block">
-                <h3>{MODE_LABEL[g[0].mode]} · {g[0].profile.name}</h3>
-                <LineChart values={sm.map((x) => x.score)} labels={g.map((s) => fmtDate(s.startedAt).slice(0, 5))} max={sm[0].max} />
-              </div>
-            );
-          })}
-        </section>
-      )}
 
       <section className="panel">
         <div className="row-between">
@@ -227,6 +206,13 @@ function SessionRow({
               ))}
               <li className="muted">Idade na sessão: {fmtAge(s.ageMonths)}</li>
             </ul>
+            {sm.attempts && sm.attempts.length > 0 && (
+              <div className="chart-block">
+                <h3>Tentativas</h3>
+                <SpanChart attempts={sm.attempts} span={sm.score} max={sm.max} />
+                <SpanTable attempts={sm.attempts} />
+              </div>
+            )}
             {sm.curve.length > 1 && s.mode !== 'escolhida' && (
               <div className="chart-block">
                 <h3>Curva de aprendizagem</h3>

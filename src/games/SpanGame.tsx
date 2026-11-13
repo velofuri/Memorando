@@ -32,6 +32,7 @@ export function SpanGame({ profile, training, onFinish }: Props) {
   const [lit, setLit] = useState(-1);
   const [response, setResponse] = useState<number[]>([]);
   const responseRef = useRef<number[]>([]);
+  const tapTimes = useRef<number[]>([]);
   const [lastOk, setLastOk] = useState(false);
   const lengthResults = useRef<boolean[]>([]);
   const trials = useRef<SpanTrial[]>([]);
@@ -50,6 +51,7 @@ export function SpanGame({ profile, training, onFinish }: Props) {
       setTimeout(() => {
         t0.current = performance.now();
         responseRef.current = [];
+        tapTimes.current = [];
         setResponse([]);
         setPhase('repeat');
       }, 500 + sequence.length * (ON_MS + OFF_MS)),
@@ -79,6 +81,7 @@ export function SpanGame({ profile, training, onFinish }: Props) {
     if (responseRef.current.length >= sequence.length) return;
     const r = [...responseRef.current, i];
     responseRef.current = r;
+    tapTimes.current.push(Math.round(performance.now() - t0.current));
     setResponse(r);
     setLit(i);
     setTimeout(() => setLit((l) => (l === i ? -1 : l)), 250);
@@ -90,7 +93,8 @@ export function SpanGame({ profile, training, onFinish }: Props) {
       sequence,
       response: r,
       correct,
-      durationMs: Math.round(performance.now() - t0.current),
+      durationMs: tapTimes.current[tapTimes.current.length - 1],
+      tapMs: [...tapTimes.current],
     });
     lengthResults.current.push(correct);
     setLastOk(correct);

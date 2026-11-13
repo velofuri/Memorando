@@ -12,7 +12,26 @@ export interface Summary {
   delayed?: number;
   meanRtMs?: number;
   details: string[];
+  /** Modo sequência: uma linha por tentativa. */
+  attempts?: SpanAttempt[];
 }
+
+export interface SpanAttempt {
+  n: number;
+  length: number;
+  correct: boolean;
+  /** Posições na grade, começando em 1 (1 = canto superior esquerdo). */
+  sequence: number[];
+  response: number[];
+  /** Posição (1, 2, 3…) do primeiro toque errado na resposta. */
+  firstError?: number;
+  durationMs: number;
+  perTapMs: number;
+  /** Tempo até o primeiro toque (só em sessões novas). */
+  firstTapMs?: number;
+}
+
+export const secs = (ms: number) => `${(ms / 1000).toFixed(1).replace('.', ',')} s`;
 
 export function summarize(s: Session): Summary {
   const k = s.profile.cardCount;
@@ -83,20 +102,44 @@ export function summarize(s: Session): Summary {
     case 'span': {
       const trials = s.trials.filter((t) => t.kind === 'span');
       const span = Math.max(0, ...trials.filter((t) => t.correct).map((t) => t.length));
+      const attempts: SpanAttempt[] = trials.map((t, i) => {
+        const fe = t.response.findIndex((v, j) => v !== t.sequence[j]);
+        return {
+          n: i + 1,
+          length: t.length,
+          correct: t.correct,
+          sequence: t.sequence.map((v) => v + 1),
+          response: t.response.map((v) => v + 1),
+          firstError: fe >= 0 ? fe + 1 : undefined,
+          durationMs: t.durationMs,
+          perTapMs: t.durationMs / t.length,
+          firstTapMs: t.tapMs?.[0],
+        };
+      });
+      const ok = attempts.filter((a) => a.correct).length;
+      const last = attempts[attempts.length - 1];
+      const stopped = !!last && attempts.filter((a) => a.length === last.length).every((a) => !a.correct);
+      const perTap = mean(attempts.map((a) => a.perTapMs));
+      const perAttempt = mean(attempts.map((a) => a.durationMs));
+      const firstTap = mean(attempts.flatMap((a) => (a.firstTapMs !== undefined ? [a.firstTapMs] : [])));
       return {
         score: span,
         max: k,
         scoreText: `span ${span}`,
         curve: [],
         curveMax: k,
+        meanRtMs: perTap,
+        attempts,
         details: [
-          `Maior sequência correta: ${span}`,
-          `Tentativas: ${trials.map((t) => `${t.length}${t.correct ? '✓' : '✗'}`).join(' ')}`,
-        ],
+          `Span (maior sequência repetida corretamente): ${span} de ${k} cartões`,
+          `Acertos: ${ok} de ${attempts.length} tentativas (2 tentativas por tamanho, começando com 2 cartões)`,
+          stopped
+            ? `Encerrado no tamanho ${last.length}: errou as duas tentativas desse tamanho`
+            : `Completou todos os tamanhos possíveis (até ${k} cartões)`,
+          perAttempt !== undefined ? `Tempo médio por tentativa: ${secs(perAttempt)} · por toque: ${secs(perTap!)}` : '',
+          firstTap !== undefined ? `Tempo médio até o primeiro toque: ${secs(firstTap)}` : '',
+        ].filter(Boolean),
       };
     }
   }
 }
-
-/** Chave para agrupar sessões comparáveis (evolução). */
-export const groupKey = (s: Session) => `${s.mode}|${s.profile.name}`;
