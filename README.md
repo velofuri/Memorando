@@ -24,7 +24,7 @@ Para usar no tablet, publique a pasta `dist/` em um servidor com **HTTPS** (nece
 | Conjunto (desenho) | Vê os cartões; desenha no papel; o profissional marca os desenhados | cartões lembrados, intrusões |
 | Sequência (span) | Os cartões piscam um a um; repete a ordem. 2 tentativas por tamanho | maior sequência correta |
 
-Qualquer modo pode ser aplicado em **modo treino** (mostra à criança se acertou ou errou).
+Qualquer modo pode ser aplicado em **modo treino** (mostra acerto/erro; não entra nos gráficos de evolução).
 
 ## Cartões
 
@@ -38,7 +38,7 @@ Qualquer modo pode ser aplicado em **modo treino** (mostra à criança se acerto
 
 - Ficam só no dispositivo (IndexedDB). Use **Configurações → Exportar backup** regularmente; o app lembra após 30 dias.
 - Paciente: código, data de nascimento e apelido opcional. Não registre nome completo nem CPF.
-- Cada sessão guarda uma cópia do perfil usado; alterar um perfil não muda sessões já feitas.
+- Cada sessão guarda uma cópia do perfil usado; a evolução compara sessões do mesmo modo e mesmo nome de perfil.
 - O PIN só impede que a criança saia do jogo ou veja resultados. Ele não criptografa os dados.
 
 ## Estrutura

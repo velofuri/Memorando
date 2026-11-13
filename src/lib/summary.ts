@@ -143,3 +143,6 @@ export function summarize(s: Session): Summary {
     }
   }
 }
+
+/** Chave para agrupar sessões comparáveis (evolução). */
+export const groupKey = (s: Session) => `${s.mode}|${s.profile.name}`;

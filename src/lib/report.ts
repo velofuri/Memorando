@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { describeCard } from './cards';
-import { secs, summarize, type SpanAttempt } from './summary';
+import { groupKey, secs, summarize, type SpanAttempt } from './summary';
 import { DIFFICULTY_LABEL, MODE_LABEL, MODE_SHORT, type Patient, type Session } from './types';
 import { DISCLAIMER, download, fmtAge, fmtDate, fmtDateTime } from './util';
 
@@ -183,6 +183,24 @@ export function exportPdf(patient: Patient, sessions: Session[]) {
     ]);
   }
   y += 4;
+
+  // Evolução por grupo (mesmo modo + perfil, sem treino)
+  const groups = new Map<string, Session[]>();
+  for (const s of sorted.filter((s) => !s.training)) {
+    const k = groupKey(s);
+    groups.set(k, [...(groups.get(k) ?? []), s]);
+  }
+  const evo = [...groups.values()].filter((g) => g.length >= 2);
+  if (evo.length) {
+    text('Evolução entre sessões (mesmo modo e perfil, sem treino)', 12, true);
+    for (const g of evo) {
+      ensure(48);
+      text(`${MODE_LABEL[g[0].mode]} – perfil ${g[0].profile.name}`, 9.5, true);
+      const sm = g.map(summarize);
+      chart(doc, M, y, W * 0.7, 36, sm.map((x) => x.score), g.map((s) => fmtDate(s.startedAt).slice(0, 5)), sm[0].max);
+      y += 44;
+    }
+  }
 
   // Detalhe por sessão
   text('Detalhamento', 12, true);
